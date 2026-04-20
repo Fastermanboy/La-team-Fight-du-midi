@@ -313,6 +313,8 @@ const kfeed = []; // kill feed entries
 const inp = { fwd:0, side:0, rot:0, fire:false };
 let lastFire = 0, wAnim = 0, mFlash = 0;
 let lastSync = 0;
+let threatNextAt = 0;
+const wallTextures = [];
 
 // ════════════════════════════════════════════════════════════════
 // SCREEN MANAGEMENT
@@ -339,6 +341,7 @@ function showScr(id) {
 let aCtx = null;
 function getACtx() {
   if (!aCtx) aCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (aCtx && aCtx.state === 'suspended') aCtx.resume().catch(()=>{});
   return aCtx;
 }
 function playSound(freq, dur, type='square', vol=0.15, decay=true) {
@@ -356,6 +359,91 @@ function sfxShoot() { playSound(180, 0.08, 'sawtooth', 0.18); }
 function sfxHit()   { playSound(440, 0.12, 'square', 0.2); }
 function sfxDie()   { playSound(200, 0.6, 'sine', 0.2); setTimeout(()=>playSound(100,0.5,'sine',0.15),150); }
 function sfxKill()  { playSound(600, 0.1, 'sine', 0.2); setTimeout(()=>playSound(900,0.15,'sine',0.2),100); }
+function sfxThreat(intensity) {
+  const base = 82 + intensity * 26;
+  const gap = Math.max(70, 170 - intensity * 80);
+  playSound(base, 0.18 + intensity * 0.07, 'sawtooth', 0.03 + intensity * 0.10);
+  setTimeout(()=>playSound(base - 12, 0.16 + intensity * 0.07, 'triangle', 0.02 + intensity * 0.08), gap);
+}
+function updateThreatAudio(now) {
+  let nearest = Infinity;
+  for (const o of Object.values(others)) {
+    if (o.health <= 0) continue;
+    const dx = o.x - P.x, dy = o.y - P.y;
+    const d = Math.sqrt(dx*dx + dy*dy);
+    if (d < nearest) nearest = d;
+  }
+  if (!isFinite(nearest) || nearest > 10.5) return;
+  const intensity = Math.max(0, Math.min(1, 1 - nearest / 10.5));
+  if (now >= threatNextAt) {
+    sfxThreat(intensity);
+    threatNextAt = now + (1400 - intensity * 1050);
+  }
+}
+function makeWallTexture(kind) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const g = c.getContext('2d');
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#26190f'; g.fillRect(0,0,64,64);
+  for (let y=0; y<64; y+=16) {
+    g.fillStyle = y % 32 === 0 ? '#2f1d12' : '#24160d';
+    g.fillRect(0,y,64,16);
+  }
+  g.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let x=0; x<64; x+=16) g.fillRect(x,0,1,64);
+  for (let y=0; y<64; y+=16) g.fillRect(0,y,64,1);
+
+  g.fillStyle = '#5a140d'; g.fillRect(0,4,64,10);
+  g.fillStyle = '#5a140d'; g.fillRect(0,50,64,10);
+  g.fillStyle = '#ffd54a';
+  g.font = 'bold 6px sans-serif';
+  g.textAlign = 'center';
+  g.fillText('TEAM DU MIDI', 32, 11);
+  g.fillText('TEAM DU MIDI', 32, 57);
+
+  g.fillStyle = '#f2e3bf'; g.fillRect(14,16,36,28);
+  g.strokeStyle = '#8a5a25'; g.lineWidth = 2; g.strokeRect(14,16,36,28);
+
+  if (kind === 'burger') {
+    g.fillStyle = '#d88b32'; g.fillRect(22,22,20,6);
+    g.fillStyle = '#6d3c19'; g.fillRect(21,28,22,5);
+    g.fillStyle = '#44a145'; g.fillRect(20,33,24,3);
+    g.fillStyle = '#d88b32'; g.fillRect(22,36,20,5);
+    g.fillStyle = '#fff3c2'; g.fillRect(24,24,2,2); g.fillRect(29,23,2,2); g.fillRect(35,24,2,2);
+  } else if (kind === 'fries') {
+    g.fillStyle = '#c6261a'; g.fillRect(23,26,18,14);
+    g.fillStyle = '#ffd54a';
+    for (let x=0; x<6; x++) g.fillRect(22 + x*3, 20 - (x%2)*2, 2, 10 + (x%3));
+  } else if (kind === 'soda') {
+    g.fillStyle = '#f7f7f7'; g.fillRect(25,23,14,18);
+    g.fillStyle = '#e33'; g.fillRect(30,18,2,8);
+    g.fillRect(32,16,6,2);
+    g.fillStyle = '#222'; g.fillRect(27,27,10,2);
+    g.fillRect(27,31,10,2);
+    g.fillStyle = '#ffcc33'; g.fillRect(18,34,10,4);
+  } else {
+    g.fillStyle = '#ffcf5a';
+    g.beginPath(); g.moveTo(32,22); g.lineTo(18,40); g.lineTo(46,40); g.closePath(); g.fill();
+    g.fillStyle = '#d94b3d'; g.beginPath(); g.arc(31,32,2,0,Math.PI*2); g.fill();
+    g.beginPath(); g.arc(27,36,2,0,Math.PI*2); g.fill();
+    g.beginPath(); g.arc(36,36,2,0,Math.PI*2); g.fill();
+  }
+
+  g.fillStyle = 'rgba(255,255,255,0.08)';
+  g.fillRect(16,18,32,2);
+  g.fillRect(16,42,32,1);
+  return g.getImageData(0,0,64,64).data;
+}
+function initWallTextures() {
+  wallTextures.length = 0;
+  wallTextures.push(
+    makeWallTexture('burger'),
+    makeWallTexture('fries'),
+    makeWallTexture('soda'),
+    makeWallTexture('pizza')
+  );
+}
 
 // ════════════════════════════════════════════════════════════════
 // MAP PREVIEW
@@ -626,6 +714,7 @@ function update(dt) {
   }
   if(inp.fire) tryFire();
   const now=performance.now();
+  updateThreatAudio(now);
   if(now-lastSync>50) { sendWS({type:'move',x:P.x,y:P.y,angle:P.angle}); lastSync=now; }
 }
 
@@ -678,7 +767,11 @@ function castRay(angle) {
     if(sdx<sdy){sdx+=ddx;mx+=sx;side=0;}else{sdy+=ddy;my+=sy;side=1;}
     if(mx<0||my<0||mx>=16||my>=16||grid[my][mx]>0) break;
   }
-  return {dist:Math.max(0.1,side===0?sdx-ddx:sdy-ddy),side};
+  const dist=Math.max(0.1,side===0?sdx-ddx:sdy-ddy);
+  const hx=P.x+ca*dist, hy=P.y+sa*dist;
+  let u=side===0 ? (hy-Math.floor(hy)) : (hx-Math.floor(hx));
+  if((side===0&&ca>0)||(side===1&&sa<0)) u=1-u;
+  return {dist,side,u,mx,my};
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -703,17 +796,25 @@ function render() {
   // Walls
   for(let x=0;x<W;x++){
     const ray=P.angle-HFOV+(x/W)*FOV;
-    const {dist,side}=castRay(ray);
+    const {dist,side,u,mx,my}=castRay(ray);
     zbuf[x]=dist;
     const wh=Math.min(H<<1,(H/dist)|0);
     const wy=((H-wh)>>1);
     const fog=Math.max(0,(1-dist/13));
-    const r=(side?wdr:wr)*fog, g=(side?wdg:wg)*fog, b=(side?wdb:wb)*fog;
+    const tex=wallTextures[Math.abs(mx*7+my*11+side)%wallTextures.length]||wallTextures[0];
+    const shade=(side?0.72:1.0);
+    const tx=Math.max(0,Math.min(63,(u*63)|0));
     const x4=x*4;
     for(let y=wy;y<wy+wh;y++){
       if(y<0||y>=H) continue;
+      const v=(y-wy)/Math.max(1,wh);
+      const ty=Math.max(0,Math.min(63,(v*63)|0));
+      const ti=(ty*64+tx)*4;
       const i=y*W*4+x4;
-      px[i]=r; px[i+1]=g; px[i+2]=b; px[i+3]=255;
+      px[i]=tex[ti]*fog*shade;
+      px[i+1]=tex[ti+1]*fog*shade;
+      px[i+2]=tex[ti+2]*fog*shade;
+      px[i+3]=255;
     }
   }
 
@@ -816,13 +917,7 @@ function drawMinimap() {
   ctx.fillStyle=`rgba(${wr/2},${wg/2},${wb/2},1)`;
   for(let y=0;y<16;y++) for(let x=0;x<16;x++)
     if(grid[y][x]) ctx.fillRect(ox+x*cell,oy+y*cell,cell,cell);
-  // Other players
-  for(const o of Object.values(others)){
-    if(o.health<=0) continue;
-    ctx.fillStyle=o.color||'#fff';
-    ctx.fillRect(ox+o.x*cell-1.5,oy+o.y*cell-1.5,3,3);
-  }
-  // Player
+  // Player only (no enemy markers)
   ctx.fillStyle='#00ff41';
   ctx.fillRect(ox+P.x*cell-2,oy+P.y*cell-2,4,4);
   ctx.strokeStyle='#00ff41';
@@ -864,6 +959,7 @@ document.addEventListener('touchmove',e=>e.preventDefault(),{passive:false});
 document.addEventListener('contextmenu',e=>e.preventDefault());
 
 // ── START ────────────────────────────────────────────────────
+initWallTextures();
 updateHUD();
 requestAnimationFrame(loop);
 </script>

@@ -310,7 +310,7 @@ const P = { x:2, y:2, angle:0, health:100, kills:0, color:'#ff3333', name:'PLAYE
 const others = {}; // id -> {x,y,angle,health,color,name,kills}
 const kfeed = []; // kill feed entries
 
-const inp = { fwd:0, rot:0, fire:false };
+const inp = { fwd:0, side:0, rot:0, fire:false };
 let lastFire = 0, wAnim = 0, mFlash = 0;
 let lastSync = 0;
 
@@ -553,14 +553,14 @@ lz.addEventListener('touchmove',e=>{
     const dx=t.clientX-jsx, dy=t.clientY-jsy;
     const len=Math.sqrt(dx*dx+dy*dy), cl=Math.min(len,JR);
     const nx=len>0?dx/len:0, ny=len>0?dy/len:0;
-    inp.fwd=-ny*(cl/JR); inp.rot=nx*(cl/JR);
+    inp.fwd=-ny*(cl/JR); inp.side=nx*(cl/JR);
     jt.style.left=(jsx+nx*cl)+'px'; jt.style.top=(jsy+ny*cl)+'px';
   }
 },{passive:false});
 lz.addEventListener('touchend',e=>{
   e.preventDefault();
   for(const t of e.changedTouches) if(t.identifier===ltid){
-    ltid=null; inp.fwd=0; inp.rot=0;
+    ltid=null; inp.fwd=0; inp.side=0;
     jb.style.display=jt.style.display='none';
   }
 },{passive:false});
@@ -615,6 +615,12 @@ function update(dt) {
   if(inp.fwd!==0){
     const dx=Math.cos(P.angle)*inp.fwd*sp;
     const dy=Math.sin(P.angle)*inp.fwd*sp;
+    if(!isWall(P.x+dx, P.y)) P.x+=dx;
+    if(!isWall(P.x, P.y+dy)) P.y+=dy;
+  }
+  if(inp.side!==0){
+    const dx=Math.cos(P.angle+Math.PI/2)*inp.side*sp;
+    const dy=Math.sin(P.angle+Math.PI/2)*inp.side*sp;
     if(!isWall(P.x+dx, P.y)) P.x+=dx;
     if(!isWall(P.x, P.y+dy)) P.y+=dy;
   }
@@ -762,7 +768,7 @@ function render() {
 // WEAPON
 // ════════════════════════════════════════════════════════════════
 function drawWeapon() {
-  const cx=W/2, bob=Math.sin(Date.now()*0.004)*2*Math.abs(inp.fwd);
+  const cx=W/2, bob=Math.sin(Date.now()*0.004)*2*Math.max(Math.abs(inp.fwd),Math.abs(inp.side||0));
   const kick=wAnim*2.5, gy=H-48+kick+bob;
   ctx.save(); ctx.imageSmoothingEnabled=false;
   // Arm

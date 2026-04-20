@@ -400,8 +400,7 @@ function goMapSelect() {
 // WEBSOCKET
 // ════════════════════════════════════════════════════════════════
 function connectWS(cb) {
-  const proto = location.protocol==='https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}`);
+  ws = new WebSocket("wss://la-team-fight-du-midi.onrender.com");
   ws.onopen = cb;
   ws.onmessage = e => onMsg(JSON.parse(e.data));
   ws.onclose = () => { ws=null; if(gState==='GAME'||gState==='LOBBY') showScr('menuScr'); };
